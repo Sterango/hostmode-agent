@@ -340,6 +340,8 @@ func (h *DefaultHandler) HandleSFTPRequest(req *Request) *Response {
 		return h.handleModData(req, moddata.HandleModIcon)
 	case "mod_model":
 		return h.handleModData(req, moddata.HandleModModel)
+	case "mod_scan":
+		return h.handleModData(req, moddata.HandleModScan)
 	default:
 		return &Response{ID: req.ID, Success: false, Error: "unknown operation"}
 	}

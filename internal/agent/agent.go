@@ -3,6 +3,8 @@ package agent
 import (
 	"bufio"
 	"crypto/rand"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ import (
 	"github.com/sterango/redstonecore-agent/internal/gameserver"
 	"github.com/sterango/redstonecore-agent/internal/heartbeat"
 	"github.com/sterango/redstonecore-agent/internal/minecraft"
+	"github.com/sterango/redstonecore-agent/internal/moddata"
 	"github.com/sterango/redstonecore-agent/internal/satisfactory"
 	"github.com/sterango/redstonecore-agent/internal/sftp"
 	"gopkg.in/yaml.v3"
@@ -897,6 +900,10 @@ func (a *Agent) ExecuteCommand(cmd api.Command) error {
 		return a.updatePlugin(cmd, server)
 	case "delete_plugin":
 		return a.deletePlugin(cmd, server)
+	case "install_mod":
+		return a.installMod(cmd, server)
+	case "delete_mod":
+		return a.deleteMod(cmd, server)
 	case "update_properties":
 		return a.updateProperties(cmd, server)
 	case "change_server_type":
@@ -2650,6 +2657,124 @@ func (a *Agent) updatePlugin(cmd api.Command, server *minecraft.Server) error {
 
 	log.Printf("Plugin updated successfully: %s", newFilename)
 	return nil
+}
+
+// modFilename validates a payload filename for mods/: a bare .jar name only.
+func modFilename(name string) (string, error) {
+	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") ||
+		!strings.HasSuffix(strings.ToLower(name), ".jar") {
+		return "", fmt.Errorf("invalid mod filename %q", name)
+	}
+	return name, nil
+}
+
+// installMod downloads a mod jar (Modrinth/CurseForge CDN) into mods/,
+// verifying its sha1, and removes any jars it replaces (older versions).
+// Re-uses the jar fetched by an earlier mod_scan compatibility check if cached.
+func (a *Agent) installMod(cmd api.Command, server *minecraft.Server) error {
+	if cmd.Payload == nil {
+		return fmt.Errorf("install_mod requires payload")
+	}
+	filename, err := modFilename(fmt.Sprint(cmd.Payload["filename"]))
+	if err != nil {
+		return err
+	}
+	downloadURL, _ := cmd.Payload["download_url"].(string)
+	wantSHA1, _ := cmd.Payload["sha1"].(string)
+	wantSHA1 = strings.ToLower(wantSHA1)
+
+	modsDir := filepath.Join(server.DataDir, "mods")
+	if err := os.MkdirAll(modsDir, 0775); err != nil {
+		return fmt.Errorf("failed to create mods directory: %w", err)
+	}
+
+	src := moddata.CachedModJar(a.config.DataDir, wantSHA1)
+	fromCache := src != ""
+	if !fromCache {
+		if downloadURL == "" {
+			return fmt.Errorf("download_url is required")
+		}
+		src, err = moddata.DownloadModJar(downloadURL, modsDir)
+		if err != nil {
+			return fmt.Errorf("failed to download mod: %w", err)
+		}
+	}
+
+	if wantSHA1 != "" {
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		sum := sha1.Sum(data)
+		if hex.EncodeToString(sum[:]) != wantSHA1 {
+			if !fromCache {
+				os.Remove(src)
+			}
+			return fmt.Errorf("checksum mismatch for %s", filename)
+		}
+	}
+
+	dest := filepath.Join(modsDir, filename)
+	if fromCache {
+		if err := copyFile(src, dest+".part"); err != nil {
+			return fmt.Errorf("failed to copy mod: %w", err)
+		}
+		src = dest + ".part"
+	}
+	if err := os.Rename(src, dest); err != nil {
+		os.Remove(src)
+		return fmt.Errorf("failed to install mod: %w", err)
+	}
+	_ = os.Chmod(dest, 0664)
+
+	if list, ok := cmd.Payload["replace_filenames"].([]interface{}); ok {
+		for _, r := range list {
+			old, err := modFilename(fmt.Sprint(r))
+			if err != nil || old == filename {
+				continue
+			}
+			if err := os.Remove(filepath.Join(modsDir, old)); err != nil && !os.IsNotExist(err) {
+				log.Printf("Warning: failed to remove replaced mod %s: %v", old, err)
+			}
+		}
+	}
+
+	log.Printf("Mod %s installed on server %s", filename, server.Name)
+	return nil
+}
+
+// deleteMod removes a jar from mods/.
+func (a *Agent) deleteMod(cmd api.Command, server *minecraft.Server) error {
+	if cmd.Payload == nil {
+		return fmt.Errorf("delete_mod requires payload")
+	}
+	filename, err := modFilename(fmt.Sprint(cmd.Payload["filename"]))
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(server.DataDir, "mods", filename)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete mod: %w", err)
+	}
+	log.Printf("Mod %s removed from server %s", filename, server.Name)
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	return out.Close()
 }
 
 // updateProperties updates the server.properties file
