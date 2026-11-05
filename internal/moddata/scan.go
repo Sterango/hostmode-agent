@@ -135,7 +135,9 @@ func HandleModScan(serverDir, serverUUID, dataDir string, params map[string]inte
 	}
 	set = append(set, candidates...)
 
+	loaderVersion := installedLoaderVersion(serverDir, loader)
 	issues := append(candErrors, analyze(set, mcVersion, loader)...)
+	issues = append(issues, analyzeLoader(set, loader, loaderVersion)...)
 	sort.SliceStable(issues, func(i, j int) bool {
 		if issues[i].New != issues[j].New {
 			return issues[i].New
@@ -144,9 +146,10 @@ func HandleModScan(serverDir, serverUUID, dataDir string, params map[string]inte
 	})
 
 	return map[string]interface{}{
-		"installed":  installed,
-		"candidates": candidates,
-		"issues":     issues,
+		"installed":      installed,
+		"candidates":     candidates,
+		"issues":         issues,
+		"loader_version": loaderVersion,
 	}
 }
 

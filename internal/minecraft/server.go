@@ -68,6 +68,7 @@ type Server struct {
 	onConsoleLine    func(line string)
 	onPlayerEvent    func(event, playerName, playerUUID string)
 	stopChan         chan struct{}
+	stopRequested    bool // the exit was intended, so a kill isn't reported as a crash
 	lastCPUTime      uint64
 	lastCPUCheckTime time.Time
 }
@@ -104,12 +105,35 @@ func NewServer(cfg ServerConfig) *Server {
 	}
 }
 
+// stopTimeout is how long a server gets to save and exit before it's killed.
+const stopTimeout = 2 * time.Minute
+
+// scriptRestart matches a launch script's switch for relaunching the game when it
+// exits, such as `${ATM9E_RESTART:-true}`.
+var scriptRestart = regexp.MustCompile(`\$\{(\w*RESTART\w*):-true\}`)
+
+// scriptRestartOverrides turns those switches off. A script that relaunches by itself
+// undoes a clean stop and hides a crash, because the process the agent watches never
+// exits. The panel decides when a server starts.
+func scriptRestartOverrides(scriptPath string) []string {
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return nil
+	}
+	var env []string
+	for _, m := range scriptRestart.FindAllSubmatch(data, -1) {
+		env = append(env, string(m[1])+"=false")
+	}
+	return env
+}
+
 func (s *Server) Start() error {
 	if s.Status == StatusRunning || s.Status == StatusStarting {
 		return fmt.Errorf("server is already running or starting")
 	}
 
 	s.Status = StatusStarting
+	s.stopRequested = false
 
 	// A freshly starting server has nobody online. Reset the player list so that
 	// players who were connected when the server previously crashed or was killed
@@ -151,6 +175,7 @@ func (s *Server) Start() error {
 		// Execute run.sh directly
 		s.cmd = exec.Command("/bin/bash", jarPath, "--nogui")
 
+		s.cmd.Env = os.Environ()
 		if major := scriptJavaMajor(jarPath, s.MinecraftVersion); major != 0 {
 			javaBin, err := javaBinForMajor(major, s.onConsoleLine)
 			if err != nil {
@@ -159,6 +184,7 @@ func (s *Server) Start() error {
 			}
 			s.cmd.Env = javaEnv(javaBin)
 		}
+		s.cmd.Env = append(s.cmd.Env, scriptRestartOverrides(jarPath)...)
 	} else {
 		// Build Java command for JAR files
 		javaArgs := []string{
@@ -327,6 +353,7 @@ func (s *Server) Stop() error {
 	}
 
 	s.Status = StatusStopping
+	s.stopRequested = true
 
 	// Send "stop" command to Minecraft
 	if err := s.SendCommand("stop"); err != nil {
@@ -334,11 +361,12 @@ func (s *Server) Stop() error {
 		return s.Kill()
 	}
 
-	// Wait for graceful shutdown (max 30 seconds)
+	// Wait for graceful shutdown. A kill loses everything since the last save, and
+	// a large modpack can take well over a minute to write its world out.
 	select {
 	case <-s.stopChan:
 		// Process exited
-	case <-time.After(30 * time.Second):
+	case <-time.After(stopTimeout):
 		// Force kill after timeout
 		return s.Kill()
 	}
@@ -348,6 +376,7 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) Kill() error {
+	s.stopRequested = true
 	if s.cmd == nil || s.cmd.Process == nil {
 		s.Status = StatusStopped
 		return nil
@@ -521,9 +550,11 @@ func (s *Server) monitorProcess() {
 
 	close(s.stopChan)
 
-	if s.Status == StatusStopping {
+	// Dying before it was ready is a crash even on a clean exit: launch scripts often
+	// return 0 after the game inside them fails to boot.
+	if s.stopRequested {
 		s.Status = StatusStopped
-	} else if err != nil {
+	} else if err != nil || s.Status == StatusStarting {
 		s.Status = StatusCrashed
 	} else {
 		s.Status = StatusStopped

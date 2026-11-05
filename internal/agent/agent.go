@@ -153,6 +153,12 @@ func (a *Agent) Run() error {
 	// Auto-start servers marked for auto-start
 	a.autoStartServers()
 
+	// Bring back whatever was running before the agent restarted
+	a.resumeServers()
+
+	// Removed mods are kept for undo, and expire on their own
+	go a.purgeModTrashLoop()
+
 	log.Println("RedstoneCore Agent is running. Press Ctrl+C to stop.")
 
 	// Wait for shutdown signal
@@ -595,6 +601,9 @@ func (a *Agent) autoStartServers() {
 }
 
 func (a *Agent) shutdown() error {
+	// Before anything stops, so the next boot knows what was running
+	a.saveResumeList()
+
 	// Stop SFTP client
 	if a.sftpClient != nil {
 		a.sftpClient.Stop()
@@ -905,6 +914,8 @@ func (a *Agent) ExecuteCommand(cmd api.Command) error {
 		return a.installMod(cmd, server)
 	case "delete_mod":
 		return a.deleteMod(cmd, server)
+	case "restore_mod":
+		return a.restoreMod(cmd, server)
 	case "update_properties":
 		return a.updateProperties(cmd, server)
 	case "change_server_type":
@@ -1832,6 +1843,10 @@ func (a *Agent) saveAllServers() {
 func (a *Agent) updateAgent(cmd api.Command) error {
 	log.Printf("[Update] Starting self-update...")
 
+	// The new agent starts these again. Saved here as well as in shutdown because
+	// the restart below may not give this process time to shut down cleanly.
+	a.saveResumeList()
+
 	// Flush worlds first — the restart kills in-process (Minecraft) servers.
 	a.saveAllServers()
 
@@ -2734,7 +2749,7 @@ func (a *Agent) installMod(cmd api.Command, server *minecraft.Server) error {
 			if err != nil || old == filename {
 				continue
 			}
-			if err := os.Remove(filepath.Join(modsDir, old)); err != nil && !os.IsNotExist(err) {
+			if err := removeMod(server.DataDir, old, trashStamp(cmd)); err != nil {
 				log.Printf("Warning: failed to remove replaced mod %s: %v", old, err)
 			}
 		}
@@ -2753,7 +2768,7 @@ func (a *Agent) deleteMod(cmd api.Command, server *minecraft.Server) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(filepath.Join(server.DataDir, "mods", filename)); err != nil && !os.IsNotExist(err) {
+	if err := removeMod(server.DataDir, filename, trashStamp(cmd)); err != nil {
 		return fmt.Errorf("failed to delete mod: %w", err)
 	}
 	log.Printf("Mod %s removed from server %s", filename, server.Name)
