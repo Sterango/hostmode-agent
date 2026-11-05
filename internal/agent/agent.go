@@ -51,6 +51,7 @@ type Agent struct {
 
 func New(cfg *config.Config) *Agent {
 	client := api.NewClient(cfg.CloudURL, cfg.APIToken)
+	minecraft.JavaRuntimeDir = filepath.Join(cfg.DataDir, "java")
 
 	return &Agent{
 		config:         cfg,
@@ -607,7 +608,7 @@ func (a *Agent) shutdown() error {
 	// Stop all servers gracefully
 	a.serversMu.RLock()
 	for _, server := range a.servers {
-		if server.Status == minecraft.StatusRunning {
+		if server.IsActive() {
 			log.Printf("Stopping server: %s", server.Name)
 			if err := server.Stop(); err != nil {
 				log.Printf("Error stopping server %s: %v", server.Name, err)
@@ -1741,7 +1742,7 @@ func (a *Agent) deleteServer(cmd api.Command) error {
 		serverDataDir = server.DataDir
 
 		// Stop the server if running
-		if server.Status == minecraft.StatusRunning {
+		if server.IsActive() {
 			log.Printf("Stopping server %s before deletion...", server.Name)
 			server.Stop()
 		}
@@ -2150,7 +2151,7 @@ func (a *Agent) changeModpack(cmd api.Command) error {
 	}
 
 	// Ensure server is stopped
-	if server.Status == minecraft.StatusRunning {
+	if server.IsActive() {
 		return fmt.Errorf("server must be stopped before changing modpacks")
 	}
 
@@ -2824,7 +2825,7 @@ func (a *Agent) changeServerType(cmd api.Command, server *minecraft.Server) erro
 	}
 
 	// Ensure server is stopped
-	if server.Status == minecraft.StatusRunning {
+	if server.IsActive() {
 		return fmt.Errorf("server must be stopped before changing type")
 	}
 

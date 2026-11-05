@@ -150,6 +150,15 @@ func (s *Server) Start() error {
 
 		// Execute run.sh directly
 		s.cmd = exec.Command("/bin/bash", jarPath, "--nogui")
+
+		if major := scriptJavaMajor(jarPath, s.MinecraftVersion); major != 0 {
+			javaBin, err := javaBinForMajor(major, s.onConsoleLine)
+			if err != nil {
+				s.Status = StatusStopped
+				return err
+			}
+			s.cmd.Env = javaEnv(javaBin)
+		}
 	} else {
 		// Build Java command for JAR files
 		javaArgs := []string{
@@ -158,7 +167,12 @@ func (s *Server) Start() error {
 			"-jar", jarPath,
 			"--nogui",
 		}
-		s.cmd = exec.Command(javaBinForVersion(s.MinecraftVersion), javaArgs...)
+		javaBin, err := javaBinForMajor(jarJavaMajor(s.Type, s.MinecraftVersion), s.onConsoleLine)
+		if err != nil {
+			s.Status = StatusStopped
+			return err
+		}
+		s.cmd = exec.Command(javaBin, javaArgs...)
 	}
 
 	s.cmd.Dir = s.DataDir
@@ -206,32 +220,37 @@ func (s *Server) Start() error {
 	// Monitor process exit
 	go s.monitorProcess()
 
-	s.Status = StatusRunning
+	// Stay "starting" through loader installs and mod loading; parseConsoleLine moves
+	// the server to running when the game logs that it's ready.
+	if !s.logsReadyLine() {
+		s.Status = StatusRunning
+	}
 	return nil
+}
+
+// logsReadyLine reports whether this server type logs the line parseConsoleLine treats
+// as ready. Proxies and custom servers don't, so they count as running once launched.
+func (s *Server) logsReadyLine() bool {
+	switch s.Type {
+	case TypeVanilla, TypePaper, TypeSpigot, TypeForge, TypeNeoForge, TypeFabric:
+		return true
+	}
+	return false
+}
+
+// IsActive reports whether the server process is up, even if it's still booting.
+func (s *Server) IsActive() bool {
+	return s.Status == StatusRunning || s.Status == StatusStarting
 }
 
 // java17Bin is the path to the Java 17 runtime bundled in the agent image, used for
 // Minecraft versions that require it. The default `java` on PATH is Java 21.
 const java17Bin = "/opt/java17/bin/java"
 
-// javaBinForVersion returns the Java binary appropriate for a Minecraft version.
-// MC 1.17 through 1.20.4 require Java 17; 1.20.5+ and 1.21+ use Java 21 (the image
-// default). Unknown/older versions fall back to the default `java`.
+// javaBinForVersion returns the Java binary to pin in a pack's variables.txt. Only
+// Java 17 needs pinning: anything newer reaches the pack through PATH (see javaEnv).
 func javaBinForVersion(mcVersion string) string {
-	parts := strings.Split(strings.TrimSpace(mcVersion), ".")
-	if len(parts) < 2 {
-		return "java"
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return "java"
-	}
-	patch := 0
-	if len(parts) >= 3 {
-		patch, _ = strconv.Atoi(parts[2])
-	}
-	// 1.17 .. 1.20.4 -> Java 17
-	if minor >= 17 && (minor < 20 || (minor == 20 && patch <= 4)) {
+	if mcJavaMajor(mcVersion) == 17 {
 		if _, err := os.Stat(java17Bin); err == nil {
 			return java17Bin
 		}
@@ -303,7 +322,7 @@ func configureServerPack(dataDir string) {
 }
 
 func (s *Server) Stop() error {
-	if s.Status != StatusRunning {
+	if !s.IsActive() {
 		return fmt.Errorf("server is not running")
 	}
 
