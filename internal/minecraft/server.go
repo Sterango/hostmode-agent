@@ -105,6 +105,10 @@ func NewServer(cfg ServerConfig) *Server {
 	}
 }
 
+// maxConsoleLine is the most of one console line kept. Longer ones are never useful to
+// read, and the panel can't take them.
+const maxConsoleLine = 8 * 1024
+
 // stopTimeout is how long a server gets to save and exit before it's killed.
 const stopTimeout = 2 * time.Minute
 
@@ -436,11 +440,34 @@ func (s *Server) GetCurrentPlayers() []string {
 	return result
 }
 
-func (s *Server) readOutput(reader io.Reader) {
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		line := scanner.Text()
+// readLines passes each line to handle until the stream ends, cutting long lines short.
+// It must never stop early: if nothing drains a server's output the pipe fills, and the
+// game freezes on its next log write. bufio.Scanner gives up on lines over 64KB, which
+// is how a 120KB line from All the Mods 9 Expert hung that server.
+func readLines(r io.Reader, handle func(line string)) {
+	reader := bufio.NewReader(r)
+	line := make([]byte, 0, 1024)
+	for {
+		chunk, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			return
+		}
+		if room := maxConsoleLine - len(line); room > 0 {
+			if len(chunk) > room {
+				chunk = chunk[:room]
+			}
+			line = append(line, chunk...)
+		}
+		if isPrefix {
+			continue
+		}
+		handle(string(line))
+		line = line[:0]
+	}
+}
 
+func (s *Server) readOutput(reader io.Reader) {
+	readLines(reader, func(line string) {
 		s.consoleMutex.Lock()
 		s.consoleBuffer = append(s.consoleBuffer, line)
 		// Keep buffer at max 1000 lines
@@ -456,7 +483,7 @@ func (s *Server) readOutput(reader io.Reader) {
 		if s.onConsoleLine != nil {
 			s.onConsoleLine(line)
 		}
-	}
+	})
 }
 
 // TPS regex patterns for various server types

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -125,4 +126,55 @@ func TestScriptRestartOverrides(t *testing.T) {
 	if len(got) != 1 || got[0] != "ATM9E_RESTART=false" {
 		t.Errorf("overrides = %v, want [ATM9E_RESTART=false]", got)
 	}
+}
+
+// All the Mods 9 Expert logs a 120KB line during boot. Reading has to carry on past it,
+// or the pipe fills and the game freezes.
+func TestReadLinesSurvivesVeryLongLine(t *testing.T) {
+	long := strings.Repeat("x", 200*1024)
+	input := "before\n" + long + "\nafter\nno newline"
+
+	var got []string
+	readLines(strings.NewReader(input), func(line string) { got = append(got, line) })
+
+	if len(got) != 4 {
+		t.Fatalf("got %d lines, want 4", len(got))
+	}
+	if got[0] != "before" || got[2] != "after" || got[3] != "no newline" {
+		t.Errorf("lines around the long one changed: %q, %q, %q", got[0], got[2], got[3])
+	}
+	if len(got[1]) != maxConsoleLine {
+		t.Errorf("long line kept %d bytes, want %d", len(got[1]), maxConsoleLine)
+	}
+}
+
+// The real failure end to end: a child that logs a huge line and then keeps logging
+// must be able to finish, which it can't if nothing is draining its output.
+func TestServerOutputKeepsDrainingAfterLongLine(t *testing.T) {
+	dir := t.TempDir()
+	done := filepath.Join(dir, "finished")
+	script := "head -c 120000 /dev/zero | tr '\\0' x; echo; " +
+		"i=0; while [ $i -lt 3000 ]; do echo 'filler line that fills the pipe buffer quickly'; i=$((i+1)); done; touch " + done
+
+	cmd := exec.Command("/bin/sh", "-c", script)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{}
+	go s.readOutput(stdout)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(done); err == nil {
+			cmd.Wait()
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cmd.Process.Kill()
+	t.Fatal("child blocked writing output: the reader stopped draining the pipe")
 }
