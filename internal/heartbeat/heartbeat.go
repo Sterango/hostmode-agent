@@ -1,6 +1,7 @@
 package heartbeat
 
 import (
+	"github.com/sterango/hostmode-agent/internal/hoststats"
 	"log"
 	"time"
 
@@ -26,14 +27,15 @@ type ServerStatusProvider interface {
 }
 
 type Heartbeat struct {
-	client            *api.Client
-	provider          ServerStatusProvider
-	interval          time.Duration
-	analyticsCounter  int
-	positionCounter   int
-	updateNotified    bool
-	stopChan          chan struct{}
-	doneChan          chan struct{}
+	client           *api.Client
+	provider         ServerStatusProvider
+	interval         time.Duration
+	analyticsCounter int
+	positionCounter  int
+	updateNotified   bool
+	host             hoststats.Sampler
+	stopChan         chan struct{}
+	doneChan         chan struct{}
 }
 
 func New(client *api.Client, provider ServerStatusProvider, interval time.Duration) *Heartbeat {
@@ -96,6 +98,7 @@ func (h *Heartbeat) sendHeartbeat() {
 		Status:  "online",
 		Version: version.Version,
 		Servers: h.provider.GetServerStatuses(),
+		Host:    h.host.Sample(),
 	}
 
 	resp, err := h.client.Heartbeat(req)

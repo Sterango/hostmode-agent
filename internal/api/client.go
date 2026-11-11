@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/sterango/hostmode-agent/internal/hoststats"
 	"io"
 	"net/http"
 	"os"
@@ -77,6 +78,7 @@ type HeartbeatRequest struct {
 	Version    string                 `json:"version,omitempty"`
 	SystemInfo map[string]interface{} `json:"system_info,omitempty"`
 	Servers    []ServerStatus         `json:"servers,omitempty"`
+	Host       *hoststats.Stats       `json:"host,omitempty"` // live CPU and memory use of the machine
 }
 
 type ServerStatus struct {
