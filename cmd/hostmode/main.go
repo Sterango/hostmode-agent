@@ -24,7 +24,7 @@ func main() {
 
 	// Setup logging
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	log.SetPrefix("[RSC] ")
+	log.SetPrefix("[HostMode] ")
 
 	log.Printf("HostMode Agent v%s starting...", version.Version)
 

@@ -86,6 +86,10 @@ func (a *Agent) Run() error {
 		log.Printf("Warning: Failed to discover existing servers: %v", err)
 	}
 
+	// Game containers made before the HostMode rename get the new names first,
+	// so discovery below finds them.
+	renameLegacyGameContainers()
+
 	// Resolve the host path of /data (needed to mount sibling game containers)
 	// and re-attach any existing Satisfactory servers.
 	a.hostDataDir = a.resolveHostDataDir()

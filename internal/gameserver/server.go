@@ -10,7 +10,7 @@ import (
 )
 
 // ContainerName is the docker container name for a game server UUID.
-func ContainerName(uuid string) string { return "rsc-gs-" + uuid }
+func ContainerName(uuid string) string { return "hostmode-gs-" + uuid }
 
 // Config describes a game server to run.
 type Config struct {

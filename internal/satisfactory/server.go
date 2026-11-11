@@ -28,7 +28,7 @@ const Image = "wolveix/satisfactory-server:latest"
 
 // ContainerName returns the docker container name for a server UUID.
 func ContainerName(uuid string) string {
-	return "rsc-sat-" + uuid
+	return "hostmode-sat-" + uuid
 }
 
 // Config describes a Satisfactory server to run.

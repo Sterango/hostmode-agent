@@ -28,9 +28,16 @@ import (
 // ===========================================================================
 
 const (
-	gameSettingsFile = "rsc-game-settings.json"
-	gameModsFile     = "rsc-mods.json"
+	gameSettingsFile = "hostmode-game-settings.json"
+	gameModsFile     = "hostmode-mods.json"
 )
+
+// legacyGameFiles maps each file to its pre-HostMode name. Reads fall back to the
+// old name; the next write saves under the new name and removes the old file.
+var legacyGameFiles = map[string]string{
+	gameSettingsFile: "rsc-game-settings.json",
+	gameModsFile:     "rsc-mods.json",
+}
 
 type gameModEntry struct {
 	ID      string `json:"id"`
@@ -208,11 +215,18 @@ func (a *Agent) writeGameJSON(dataDir, file string, v interface{}) {
 	}
 	if err := os.WriteFile(filepath.Join(dataDir, file), data, 0644); err != nil {
 		log.Printf("Warning: failed to write %s: %v", file, err)
+		return
+	}
+	if legacy, ok := legacyGameFiles[file]; ok {
+		_ = os.Remove(filepath.Join(dataDir, legacy))
 	}
 }
 
 func (a *Agent) readGameMods(dataDir string) []gameModEntry {
 	data, err := os.ReadFile(filepath.Join(dataDir, gameModsFile))
+	if os.IsNotExist(err) {
+		data, err = os.ReadFile(filepath.Join(dataDir, legacyGameFiles[gameModsFile]))
+	}
 	if err != nil {
 		return []gameModEntry{}
 	}

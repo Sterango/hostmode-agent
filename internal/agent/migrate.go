@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -30,15 +31,15 @@ F="$1"
 log() { echo "[HostMode migration] $*"; }
 rollback() {
   log "failed: $1, rolling back"
-  cp "$F.pre-hostmode" "$F"
-  [ -f .env.pre-hostmode ] && cp .env.pre-hostmode .env
+  cat "$F.pre-hostmode" > "$F"
+  [ -f .env.pre-hostmode ] && cat .env.pre-hostmode > .env
   docker rm -f hostmode >/dev/null 2>&1
   docker compose -p redstonecore up -d
   exit 1
 }
 
-cp "$F" "$F.pre-hostmode" || { log "cannot back up $F"; exit 1; }
-[ -f .env ] && cp .env .env.pre-hostmode
+cp -p "$F" "$F.pre-hostmode" || { log "cannot back up $F"; exit 1; }
+[ -f .env ] && cp -p .env .env.pre-hostmode
 
 sed -i \
   -e 's#ghcr.io/sterango/redstonecore-agent#ghcr.io/sterango/hostmode-agent#g' \
@@ -50,7 +51,9 @@ sed -i \
   "$F" || rollback "rewrite compose file"
 # Pin the project name so plain "docker compose" in this folder (the rsc helper,
 # Windows autostart) targets the new project even though the folder keeps its name.
-grep -q '^name:' "$F" || { { echo "name: hostmode"; cat "$F"; } > "$F.tmp" && mv "$F.tmp" "$F"; } || rollback "set project name"
+# Write back into the same file (cat >, not mv) so the owner and mode are kept;
+# the helper runs as root and a root-owned compose file would lock out ./rsc.
+grep -q '^name:' "$F" || { { echo "name: hostmode"; cat "$F"; } > "$F.tmp" && cat "$F.tmp" > "$F" && rm -f "$F.tmp"; } || rollback "set project name"
 if [ -f .env ]; then
   sed -i -e 's/^RSC_/HOSTMODE_/' -e 's/RedstoneCore/HostMode/g' .env || rollback "rewrite .env"
 fi
@@ -63,12 +66,44 @@ docker stop -t 90 redstonecore
 docker rm redstonecore
 docker compose up -d || rollback "could not start the hostmode container"
 
+# Up for 20s without restarting; a crash-looping container also reports Running.
 sleep 20
-[ "$(docker inspect -f '{{.State.Running}}' hostmode 2>/dev/null)" = "true" ] || rollback "hostmode container is not running"
+[ "$(docker inspect -f '{{.State.Running}} {{.State.Restarting}} {{.RestartCount}}' hostmode 2>/dev/null)" = "true false 0" ] || rollback "hostmode container is not staying up"
 
-[ -e rsc ] && [ ! -e hostmode ] && ln -s rsc hostmode
+# Replace the old ./rsc helper with ./hostmode (same commands, new names).
+if [ -f rsc ] && [ ! -e hostmode ]; then
+  sed -e 's/RedstoneCore/HostMode/g' -e 's/REDSTONECORE/HOSTMODE/g' \
+      -e 's#ghcr.io/sterango/redstonecore-agent#ghcr.io/sterango/hostmode-agent#g' \
+      -e 's#\./rsc#./hostmode#g' rsc > hostmode.tmp && cat hostmode.tmp > rsc && rm -f hostmode.tmp && mv rsc hostmode
+fi
 log "done"
 `
+
+// renameLegacyGameContainers renames game containers created before the rename
+// (rsc-sat-<uuid>, rsc-gs-<uuid>) to the HostMode names. docker rename keeps the
+// container's data, mounts and running state, so this is safe at any time.
+func renameLegacyGameContainers() {
+	out, err := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}").Output()
+	if err != nil {
+		return
+	}
+	for _, name := range strings.Fields(string(out)) {
+		var newName string
+		switch {
+		case strings.HasPrefix(name, "rsc-sat-"):
+			newName = "hostmode-sat-" + strings.TrimPrefix(name, "rsc-sat-")
+		case strings.HasPrefix(name, "rsc-gs-"):
+			newName = "hostmode-gs-" + strings.TrimPrefix(name, "rsc-gs-")
+		default:
+			continue
+		}
+		if err := exec.Command("docker", "rename", name, newName).Run(); err != nil {
+			log.Printf("[Migration] Could not rename container %s: %v", name, err)
+			continue
+		}
+		log.Printf("[Migration] Renamed container %s to %s", name, newName)
+	}
+}
 
 // startLegacyMigration schedules the one-time rename for pre-HostMode installs.
 func (a *Agent) startLegacyMigration() {

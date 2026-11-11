@@ -45,7 +45,7 @@ name, keep the `RSC_*` env fallback in `config.getenv`, and keep `redstonecore` 
 3 minutes after a 2.x agent starts inside a `redstonecore` container, it moves the install to the HostMode
 names once: a `docker:cli` helper backs up `docker-compose.yml` → `.pre-hostmode` (and `.env`), rewrites
 image/service/container/`RSC_*` names, adds `name: hostmode` (so plain `docker compose` and `./rsc` in the old
-folder still work), swaps the container and checks it's running. Any failure restores the backups and the
+folder still work), swaps the container and checks it stays up (not restarting). Any failure restores the backups and the
 old container. The folder keeps its name. `/config/.hostmode-migration` marks the attempt so it never
 loops. Opt out with `HOSTMODE_SKIP_MIGRATION=1`. It needs the `hostmode-agent` GHCR package to be public.
 
