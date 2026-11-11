@@ -3,7 +3,7 @@ package agent
 import (
 	"log"
 
-	"github.com/sterango/redstonecore-agent/internal/api"
+	"github.com/sterango/hostmode-agent/internal/api"
 )
 
 // reportInstall pushes install progress for ANY server type to the cloud, reusing

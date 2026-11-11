@@ -34,30 +34,30 @@ type Config struct {
 
 func Load(configPath string) (*Config, error) {
 	cfg := &Config{
-		CloudURL:     "https://redstonecore.net",
-		SFTPRelayURL: "wss://redstonecore.net/relay/sftp",
+		CloudURL:     "https://hostmode.net",
+		SFTPRelayURL: "wss://hostmode.net/relay/sftp",
 		DataDir:      "/data",
 		ConfigDir:    "/config",
 		Servers:      []ServerConfig{},
 	}
 
 	// Check environment variables first
-	if licenseKey := os.Getenv("RSC_LICENSE_KEY"); licenseKey != "" {
+	if licenseKey := getenv("LICENSE_KEY"); licenseKey != "" {
 		cfg.LicenseKey = licenseKey
 	}
-	if cloudURL := os.Getenv("RSC_CLOUD_URL"); cloudURL != "" {
+	if cloudURL := getenv("CLOUD_URL"); cloudURL != "" {
 		cfg.CloudURL = cloudURL
 	}
-	if dataDir := os.Getenv("RSC_DATA_DIR"); dataDir != "" {
+	if dataDir := getenv("DATA_DIR"); dataDir != "" {
 		cfg.DataDir = dataDir
 	}
-	if configDir := os.Getenv("RSC_CONFIG_DIR"); configDir != "" {
+	if configDir := getenv("CONFIG_DIR"); configDir != "" {
 		cfg.ConfigDir = configDir
 	}
-	if sftpRelayURL := os.Getenv("RSC_SFTP_RELAY_URL"); sftpRelayURL != "" {
+	if sftpRelayURL := getenv("SFTP_RELAY_URL"); sftpRelayURL != "" {
 		cfg.SFTPRelayURL = sftpRelayURL
 	}
-	if hostDataDir := os.Getenv("RSC_HOST_DATA_DIR"); hostDataDir != "" {
+	if hostDataDir := getenv("HOST_DATA_DIR"); hostDataDir != "" {
 		cfg.HostDataDir = hostDataDir
 	}
 
@@ -74,7 +74,7 @@ func Load(configPath string) (*Config, error) {
 
 	// Validate required fields
 	if cfg.LicenseKey == "" {
-		return nil, fmt.Errorf("license_key is required (set RSC_LICENSE_KEY env or in config.yaml)")
+		return nil, fmt.Errorf("license_key is required (set HOSTMODE_LICENSE_KEY env or in config.yaml)")
 	}
 
 	// Ensure directories exist
@@ -83,6 +83,15 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// getenv reads HOSTMODE_<name>, falling back to the pre-rename RSC_<name> so
+// installs made under the RedstoneCore name keep working unchanged.
+func getenv(name string) string {
+	if v := os.Getenv("HOSTMODE_" + name); v != "" {
+		return v
+	}
+	return os.Getenv("RSC_" + name)
 }
 
 func (c *Config) SaveCredentials() error {

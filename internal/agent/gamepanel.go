@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sterango/redstonecore-agent/internal/api"
-	"github.com/sterango/redstonecore-agent/internal/gameserver"
+	"github.com/sterango/hostmode-agent/internal/api"
+	"github.com/sterango/hostmode-agent/internal/gameserver"
 )
 
 // ===========================================================================

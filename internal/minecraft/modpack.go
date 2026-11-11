@@ -382,7 +382,7 @@ func (m *ModpackInstaller) downloadFile(url, destPath string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "RedstoneCore-Agent/1.0 (https://redstonecore.net)")
+	req.Header.Set("User-Agent", "HostMode-Agent/1.0 (+https://hostmode.net)")
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {

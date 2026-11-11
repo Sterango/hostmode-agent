@@ -329,7 +329,7 @@ func generatePassword() string {
 func defaultSession(name string) string {
 	n := strings.TrimSpace(name)
 	if n == "" {
-		return "RedstoneCore"
+		return "HostMode"
 	}
 	return n
 }

@@ -1,4 +1,4 @@
-# RedstoneCore Agent Dockerfile
+# HostMode Agent Dockerfile (formerly RedstoneCore)
 # Multi-stage build: Go builder + Java runtime
 
 # Stage 1: Build the Go binary
@@ -17,9 +17,9 @@ RUN go mod tidy
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-w -s -X github.com/sterango/redstonecore-agent/internal/version.Version=1.8.10 -X github.com/sterango/redstonecore-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    -o /rsc \
-    ./cmd/rsc
+    -ldflags="-w -s -X github.com/sterango/hostmode-agent/internal/version.Version=2.0.0 -X github.com/sterango/hostmode-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o /hostmode \
+    ./cmd/hostmode
 
 # Stage 2: Runtime with Java
 FROM eclipse-temurin:21-jre-alpine
@@ -51,16 +51,16 @@ RUN mkdir -p /data /config && chown -R rsc:rsc /data /config
 # (e.g. Forge 1.20.1). The default `java` on PATH remains Java 21.
 COPY --from=eclipse-temurin:17-jre-alpine /opt/java/openjdk /opt/java17
 
-# Copy the binary from builder
-COPY --from=builder /rsc /usr/local/bin/rsc
-RUN chmod +x /usr/local/bin/rsc
+# Copy the binary from builder. `rsc` stays as an alias for pre-rename scripts.
+COPY --from=builder /hostmode /usr/local/bin/hostmode
+RUN chmod +x /usr/local/bin/hostmode && ln -s /usr/local/bin/hostmode /usr/local/bin/rsc
 
 # Set working directory
 WORKDIR /data
 
 # Environment variables
-ENV RSC_DATA_DIR=/data \
-    RSC_CONFIG_DIR=/config \
+ENV HOSTMODE_DATA_DIR=/data \
+    HOSTMODE_CONFIG_DIR=/config \
     TZ=UTC
 
 # Volumes for persistence
@@ -77,4 +77,4 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
 USER rsc
 
 # Entry point
-ENTRYPOINT ["rsc"]
+ENTRYPOINT ["hostmode"]

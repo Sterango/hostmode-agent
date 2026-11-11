@@ -42,7 +42,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          # Publish under the new name and keep the pre-rename name updated:
+          # existing installs' compose files pull redstonecore-agent:latest.
+          images: |
+            ${{ env.REGISTRY }}/sterango/hostmode-agent
+            ${{ env.REGISTRY }}/sterango/redstonecore-agent
           tags: |
             type=ref,event=branch
             type=ref,event=pr

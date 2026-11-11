@@ -1,4 +1,4 @@
-# RedstoneCore Agent — Windows (Docker Desktop + WSL2)
+# HostMode Agent — Windows (Docker Desktop + WSL2)
 #
 # This is the Windows variant of the compose file. install-windows.ps1 downloads it
 # and saves it INSIDE the WSL2 distro as `docker-compose.yml` (the default name the
@@ -9,14 +9,14 @@
 #     container ports to the Windows host, so the Minecraft port range is published
 #     explicitly below. (Satisfactory servers run as *sibling* containers that publish
 #     their own ports, so Docker Desktop forwards those to Windows automatically.)
-#   * It is meant to run from inside the WSL2 filesystem (e.g. ~/redstonecore) so that
+#   * It is meant to run from inside the WSL2 filesystem (e.g. ~/hostmode) so that
 #     ./data lives on the fast Linux filesystem and is daemon-visible for the sibling
-#     Satisfactory container bind mounts (see RSC_HOST_DATA_DIR below).
+#     Satisfactory container bind mounts (see HOSTMODE_HOST_DATA_DIR below).
 
 services:
-  redstonecore:
-    image: ghcr.io/sterango/redstonecore-agent:latest
-    container_name: redstonecore
+  hostmode:
+    image: ghcr.io/sterango/hostmode-agent:latest
+    container_name: hostmode
     restart: unless-stopped
     user: root
 
@@ -28,8 +28,8 @@ services:
       - "25565-25584:25565-25584/udp"
 
     environment:
-      # Required: your license key from redstonecore.net
-      - RSC_LICENSE_KEY=${RSC_LICENSE_KEY}
+      # Required: your license key from hostmode.net
+      - HOSTMODE_LICENSE_KEY=${HOSTMODE_LICENSE_KEY}
 
       # Optional: timezone (default: UTC)
       - TZ=${TZ:-UTC}
@@ -37,7 +37,7 @@ services:
       # Host path of ./data — sibling game containers (Satisfactory) bind-mount against
       # HOST paths, not the agent's in-container /data. Running inside WSL2 makes ${PWD}
       # a daemon-visible Linux path, so this resolves correctly.
-      - RSC_HOST_DATA_DIR=${PWD}/data
+      - HOSTMODE_HOST_DATA_DIR=${PWD}/data
 
     volumes:
       # Server data (worlds, plugins, mods, Satisfactory saves, etc.)

@@ -19,14 +19,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sterango/redstonecore-agent/internal/api"
-	"github.com/sterango/redstonecore-agent/internal/config"
-	"github.com/sterango/redstonecore-agent/internal/gameserver"
-	"github.com/sterango/redstonecore-agent/internal/heartbeat"
-	"github.com/sterango/redstonecore-agent/internal/minecraft"
-	"github.com/sterango/redstonecore-agent/internal/moddata"
-	"github.com/sterango/redstonecore-agent/internal/satisfactory"
-	"github.com/sterango/redstonecore-agent/internal/sftp"
+	"github.com/sterango/hostmode-agent/internal/api"
+	"github.com/sterango/hostmode-agent/internal/config"
+	"github.com/sterango/hostmode-agent/internal/gameserver"
+	"github.com/sterango/hostmode-agent/internal/heartbeat"
+	"github.com/sterango/hostmode-agent/internal/minecraft"
+	"github.com/sterango/hostmode-agent/internal/moddata"
+	"github.com/sterango/hostmode-agent/internal/satisfactory"
+	"github.com/sterango/hostmode-agent/internal/sftp"
 	"gopkg.in/yaml.v3"
 )
 
@@ -64,7 +64,7 @@ func New(cfg *config.Config) *Agent {
 }
 
 func (a *Agent) Run() error {
-	log.Println("Starting RedstoneCore Agent...")
+	log.Println("Starting HostMode Agent...")
 
 	// Register or load existing registration
 	if !a.config.IsRegistered() {
@@ -159,7 +159,10 @@ func (a *Agent) Run() error {
 	// Removed mods are kept for undo, and expire on their own
 	go a.purgeModTrashLoop()
 
-	log.Println("RedstoneCore Agent is running. Press Ctrl+C to stop.")
+	// Pre-rename installs move themselves to the HostMode names once settled
+	a.startLegacyMigration()
+
+	log.Println("HostMode Agent is running. Press Ctrl+C to stop.")
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
@@ -1029,13 +1032,13 @@ type satMeta struct {
 
 // resolveHostDataDir finds the host path backing the agent's /data volume, which
 // sibling game containers need for their bind mounts (a container's -v always
-// references HOST paths). Prefers the explicit RSC_HOST_DATA_DIR, then inspects
+// references HOST paths). Prefers the explicit HOSTMODE_HOST_DATA_DIR, then inspects
 // the agent's own container, then derives it from the compose mount.
 func (a *Agent) resolveHostDataDir() string {
 	if a.config.HostDataDir != "" {
 		return a.config.HostDataDir
 	}
-	out, err := exec.Command("docker", "inspect", "redstonecore",
+	out, err := exec.Command("docker", "inspect", a.selfContainer(),
 		"--format", `{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}`).Output()
 	if err == nil {
 		if p := strings.TrimSpace(string(out)); p != "" {
@@ -1850,9 +1853,12 @@ func (a *Agent) updateAgent(cmd api.Command) error {
 	// Flush worlds first — the restart kills in-process (Minecraft) servers.
 	a.saveAllServers()
 
-	// Pull the latest image
-	log.Printf("[Update] Pulling latest image...")
-	pullCmd := exec.Command("docker", "pull", "ghcr.io/sterango/redstonecore-agent:latest")
+	// Pull the image this container was started from. Installs made before the
+	// HostMode rename reference redstonecore-agent in their compose file, and CI
+	// keeps publishing that name, so pulling our own image keeps both working.
+	image, project := a.selfImageAndProject()
+	log.Printf("[Update] Pulling latest image %s...", image)
+	pullCmd := exec.Command("docker", "pull", image)
 	pullCmd.Stdout = os.Stdout
 	pullCmd.Stderr = os.Stderr
 	if err := pullCmd.Run(); err != nil {
@@ -1882,7 +1888,7 @@ func (a *Agent) updateAgent(cmd api.Command) error {
 		"-v", hostComposeDir+":"+hostComposeDir,
 		"-w", hostComposeDir,
 		"docker:cli",
-		"docker", "compose", "-p", "redstonecore",
+		"docker", "compose", "-p", project,
 		"up", "-d", "--force-recreate")
 	restartCmd.Stdout = os.Stdout
 	restartCmd.Stderr = os.Stderr
@@ -1898,9 +1904,47 @@ func (a *Agent) updateAgent(cmd api.Command) error {
 	return nil
 }
 
+// agentContainerNames are the names the agent container may run under: the
+// current one first, then the name used by installs made before the rename.
+var agentContainerNames = []string{"hostmode", "redstonecore"}
+
+// selfContainer returns the name of the container this agent runs in. The agent
+// uses host networking, so its hostname can't identify it; probe known names.
+func (a *Agent) selfContainer() string {
+	for _, name := range agentContainerNames {
+		if err := exec.Command("docker", "inspect", "--type", "container", name).Run(); err == nil {
+			return name
+		}
+	}
+	return agentContainerNames[0]
+}
+
+// selfImageAndProject returns the image and compose project of the running agent
+// container, falling back to the HostMode defaults when they can't be read.
+func (a *Agent) selfImageAndProject() (string, string) {
+	name := a.selfContainer()
+	image, project := "ghcr.io/sterango/hostmode-agent:latest", name
+	out, err := exec.Command("docker", "inspect", name,
+		"--format", `{{.Config.Image}}|{{index .Config.Labels "com.docker.compose.project"}}`).Output()
+	if err != nil {
+		log.Printf("[Update] Failed to inspect %s, using defaults: %v", name, err)
+		return image, project
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "|", 2)
+	if len(parts) == 2 {
+		if parts[0] != "" {
+			image = parts[0]
+		}
+		if parts[1] != "" {
+			project = parts[1]
+		}
+	}
+	return image, project
+}
+
 // findHostComposePath inspects the agent container to find the host path of docker-compose.yml
 func (a *Agent) findHostComposePath() string {
-	out, err := exec.Command("docker", "inspect", "redstonecore",
+	out, err := exec.Command("docker", "inspect", a.selfContainer(),
 		"--format", `{{range .Mounts}}{{if eq .Destination "/docker-compose.yml"}}{{.Source}}{{end}}{{end}}`).Output()
 	if err != nil {
 		log.Printf("[Update] Failed to inspect container mounts: %v", err)
@@ -2646,7 +2690,7 @@ func (a *Agent) updatePlugin(cmd api.Command, server *minecraft.Server) error {
 	}
 
 	// Set User-Agent header for Modrinth API compliance
-	req.Header.Set("User-Agent", "RedstoneCore-Agent/1.0")
+	req.Header.Set("User-Agent", "HostMode-Agent/1.0 (+https://hostmode.net)")
 
 	resp, err := client.Do(req)
 	if err != nil {

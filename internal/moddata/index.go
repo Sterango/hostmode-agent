@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sterango/redstonecore-agent/internal/maprender"
+	"github.com/sterango/hostmode-agent/internal/maprender"
 )
 
 // Index is the per-server item + recipe catalog, persisted as index.json.

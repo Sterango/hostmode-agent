@@ -4,8 +4,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/sterango/redstonecore-agent/internal/api"
-	"github.com/sterango/redstonecore-agent/internal/version"
+	"github.com/sterango/hostmode-agent/internal/api"
+	"github.com/sterango/hostmode-agent/internal/version"
 )
 
 // ServerAnalytics contains analytics data for a single server

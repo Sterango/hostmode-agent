@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/sterango/redstonecore-agent/internal/maprender"
+	"github.com/sterango/hostmode-agent/internal/maprender"
 )
 
 // dropPrefixes are lang key categories that add noise to the config helper and

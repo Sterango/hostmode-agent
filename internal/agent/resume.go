@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/sterango/redstonecore-agent/internal/minecraft"
+	"github.com/sterango/hostmode-agent/internal/minecraft"
 )
 
 // resumeStagger spaces out restarts so several modpacks don't all load at once.

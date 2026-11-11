@@ -1,23 +1,23 @@
-# RedstoneCore Agent Docker Compose
+# HostMode Agent Docker Compose
 # Usage: docker-compose up -d
 
 version: '3.8'
 
 services:
-  redstonecore:
+  hostmode:
     build:
       context: .
       dockerfile: Dockerfile
-    image: redstonecore-agent:local
-    container_name: redstonecore
+    image: hostmode-agent:local
+    container_name: hostmode
     restart: unless-stopped
 
     environment:
-      # Required: Your license key from redstonecore.net
-      - RSC_LICENSE_KEY=${RSC_LICENSE_KEY}
+      # Required: Your license key from hostmode.net
+      - HOSTMODE_LICENSE_KEY=${HOSTMODE_LICENSE_KEY}
 
       # Optional: Override cloud URL (for testing/self-hosted)
-      # - RSC_CLOUD_URL=https://redstonecore.net
+      # - HOSTMODE_CLOUD_URL=https://hostmode.net
 
       # Optional: Timezone
       - TZ=${TZ:-UTC}
@@ -54,5 +54,5 @@ services:
 
 # Optional: Create named volumes instead of bind mounts
 # volumes:
-#   rsc-data:
-#   rsc-config:
+#   hostmode-data:
+#   hostmode-config:

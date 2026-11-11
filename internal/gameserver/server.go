@@ -66,7 +66,7 @@ func (s *Server) writeConfig() error {
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		return err
 	}
-	body := "## Managed by RedstoneCore — edits may be overwritten\n" +
+	body := "## Managed by HostMode — edits may be overwritten\n" +
 		s.spec.Config(s.BasePort, s.MaxPlayers, s.Name)
 	return os.WriteFile(filepath.Join(dir, s.spec.Name+".cfg"), []byte(body), 0o664)
 }

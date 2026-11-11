@@ -6,9 +6,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/sterango/redstonecore-agent/internal/agent"
-	"github.com/sterango/redstonecore-agent/internal/config"
-	"github.com/sterango/redstonecore-agent/internal/version"
+	"github.com/sterango/hostmode-agent/internal/agent"
+	"github.com/sterango/hostmode-agent/internal/config"
+	"github.com/sterango/hostmode-agent/internal/version"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("RedstoneCore Agent v%s (built %s)\n", version.Version, version.BuildTime)
+		fmt.Printf("HostMode Agent v%s (built %s)\n", version.Version, version.BuildTime)
 		os.Exit(0)
 	}
 
@@ -26,7 +26,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	log.SetPrefix("[RSC] ")
 
-	log.Printf("RedstoneCore Agent v%s starting...", version.Version)
+	log.Printf("HostMode Agent v%s starting...", version.Version)
 
 	// Load configuration
 	cfg, err := config.Load(*configPath)

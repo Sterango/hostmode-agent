@@ -1,4 +1,4 @@
-module github.com/sterango/redstonecore-agent
+module github.com/sterango/hostmode-agent
 
 go 1.21
 

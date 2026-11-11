@@ -168,7 +168,7 @@ func (s *Server) Start() error {
 	if isRunScript {
 		// For run.sh, update user_jvm_args.txt with memory settings
 		jvmArgsPath := filepath.Join(s.DataDir, "user_jvm_args.txt")
-		jvmArgs := fmt.Sprintf("# Auto-configured by RedstoneCore\n-Xmx%dM\n-Xms%dM\n", s.AllocatedRAM, s.AllocatedRAM/2)
+		jvmArgs := fmt.Sprintf("# Auto-configured by HostMode\n-Xmx%dM\n-Xms%dM\n", s.AllocatedRAM, s.AllocatedRAM/2)
 		os.WriteFile(jvmArgsPath, []byte(jvmArgs), 0644)
 
 		// Pin the pack's Java runtime to match its Minecraft version, and (for Forge)
@@ -694,7 +694,7 @@ func (s *Server) EnsureServerProperties() error {
 	// Create default server.properties
 	props := fmt.Sprintf(`server-port=%d
 max-players=%d
-motd=A RedstoneCore Minecraft Server
+motd=A HostMode Minecraft Server
 enable-command-block=true
 `, s.Port, s.MaxPlayers)
 
@@ -1005,7 +1005,7 @@ func (s *Server) UpdateProperties(newProps map[string]string) error {
 	// Build new file content
 	var lines []string
 	lines = append(lines, "# Minecraft server properties")
-	lines = append(lines, fmt.Sprintf("# Updated by RedstoneCore Agent on %s", time.Now().Format(time.RFC3339)))
+	lines = append(lines, fmt.Sprintf("# Updated by HostMode Agent on %s", time.Now().Format(time.RFC3339)))
 	lines = append(lines, "")
 
 	for k, v := range existingProps {

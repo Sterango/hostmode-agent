@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/sterango/redstonecore-agent/internal/backup"
-	"github.com/sterango/redstonecore-agent/internal/maprender"
-	"github.com/sterango/redstonecore-agent/internal/moddata"
+	"github.com/sterango/hostmode-agent/internal/backup"
+	"github.com/sterango/hostmode-agent/internal/maprender"
+	"github.com/sterango/hostmode-agent/internal/moddata"
 )
 
 // Client handles the SFTP relay WebSocket connection

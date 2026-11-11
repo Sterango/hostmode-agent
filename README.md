@@ -1,21 +1,21 @@
-# RedstoneCore Agent
+# HostMode Agent
 
-Self-hosted Minecraft server management agent that connects to the RedstoneCore cloud console.
+Self-hosted Minecraft server management agent that connects to the HostMode cloud console.
 
 ## Quick Start
 
 ### 1. Get a License Key
 
-Visit [redstonecore.net](https://redstonecore.net) to create an account and get a license.
+Visit [hostmode.net](https://hostmode.net) to create an account and get a license.
 
 ### 2. Deploy with Docker
 
 ```bash
 # Download the docker-compose file
-curl -O https://redstonecore.net/downloads/docker-compose.yml
+curl -O https://hostmode.net/downloads/docker-compose.yml
 
 # Create your environment file with your license key
-echo "RSC_LICENSE_KEY=RSC-XXXX-XXXX-XXXX-XXXX" > .env
+echo "HOSTMODE_LICENSE_KEY=RSC-XXXX-XXXX-XXXX-XXXX" > .env
 
 # Create data directories
 mkdir -p data config
@@ -33,14 +33,14 @@ On a Windows 10/11 PC, run the agent inside Docker Desktop with the WSL2 backend
 **PowerShell** or **Command Prompt** and run (it self-elevates to administrator):
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://redstonecore.net/downloads/install-windows.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://hostmode.net/downloads/install-windows.ps1 | iex"
 ```
 
 > `irm`/`iex` are PowerShell aliases, so the shorter `irm <url> | iex` only works inside
 > PowerShell. The command above works from either PowerShell or Command Prompt.
 
 The installer ensures WSL2 + Docker Desktop are present, prompts for your license key, sets the
-agent up inside your WSL2 distro (`~/redstonecore`), configures auto-start on login, and opens the
+agent up inside your WSL2 distro (`~/hostmode`), configures auto-start on login, and opens the
 Windows Firewall for game ports.
 
 Notes specific to Windows:
@@ -50,11 +50,11 @@ Notes specific to Windows:
 - The files live inside the WSL2 filesystem so `./data` is fast and is daemon-visible for Satisfactory's
   sibling containers.
 - Docker Desktop starts on login (it is not a pre-login Windows service); the agent then auto-starts via
-  the restart policy. Manage it with `rsc start | stop | restart | logs | update | status`.
+  the restart policy. Manage it with `hostmode start | stop | restart | logs | update | status`.
 
 ### 3. Manage via Cloud Console
 
-Log in to [redstonecore.net](https://redstonecore.net) to:
+Log in to [hostmode.net](https://hostmode.net) to:
 - Create and manage servers
 - View real-time console output
 - Start, stop, and restart servers
@@ -69,9 +69,9 @@ Log in to [redstonecore.net](https://redstonecore.net) to:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RSC_LICENSE_KEY` | Your license key (required) | - |
-| `RSC_CLOUD_URL` | Cloud console URL | `https://redstonecore.net` |
-| `RSC_SFTP_RELAY_URL` | SFTP relay WebSocket URL | `wss://redstonecore.net:8022/sftp` |
+| `HOSTMODE_LICENSE_KEY` | Your license key (required) | - |
+| `HOSTMODE_CLOUD_URL` | Cloud console URL | `https://hostmode.net` |
+| `HOSTMODE_SFTP_RELAY_URL` | SFTP relay WebSocket URL | `wss://hostmode.net:8022/sftp` |
 | `TZ` | Timezone | UTC |
 
 ### Server Types
@@ -117,20 +117,20 @@ Log in to [redstonecore.net](https://redstonecore.net) to:
 
 ## SFTP Access
 
-Access your server files via SFTP without opening any ports on your machine. The agent connects outbound to the RedstoneCore relay server.
+Access your server files via SFTP without opening any ports on your machine. The agent connects outbound to the HostMode relay server.
 
 ### Connect with any SFTP client (FileZilla, WinSCP, etc.)
 
 | Setting | Value |
 |---------|-------|
-| Host | `redstonecore.net` |
+| Host | `hostmode.net` |
 | Port | `2224` |
 | Username | Your server's UUID (shown in web console) |
 | Password | Your account password or instance API token |
 
 Example with command line:
 ```bash
-sftp -P 2224 5b2f65b5-aace-438d-9347-d9acf555fe48@redstonecore.net
+sftp -P 2224 5b2f65b5-aace-438d-9347-d9acf555fe48@hostmode.net
 ```
 
 ### How it works
@@ -153,7 +153,7 @@ Make sure your firewall allows incoming connections on your Minecraft ports.
 
 ### Via Web Dashboard (Recommended)
 
-When a new version is available, you'll see an **"Update Now"** button on your instance page in the RedstoneCore dashboard. Click it to automatically pull and restart with the latest version.
+When a new version is available, you'll see an **"Update Now"** button on your instance page in the HostMode dashboard. Click it to automatically pull and restart with the latest version.
 
 ### Via Command Line
 
@@ -193,9 +193,9 @@ docker compose logs -f
 
 ## Support
 
-- Documentation: [redstonecore.net/docs](https://redstonecore.net/docs)
-- Issues: [GitHub Issues](https://github.com/redstonecore/agent/issues)
+- Documentation: [hostmode.net/docs](https://hostmode.net/docs)
+- Issues: [GitHub Issues](https://github.com/sterango/hostmode-agent/issues)
 
 ## License
 
-Proprietary - RedstoneCore
+Proprietary - HostMode

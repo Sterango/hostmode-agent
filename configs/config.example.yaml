@@ -1,11 +1,11 @@
 # RedstoneCore Agent Configuration
 # Copy this file to /config/config.yaml and customize
 
-# Your license key from redstonecore.net
+# Your license key from hostmode.net
 license_key: "RSC-XXXX-XXXX-XXXX-XXXX"
 
 # Cloud URL (change only for self-hosted cloud instances)
-cloud_url: "https://redstonecore.net"
+cloud_url: "https://hostmode.net"
 
 # Data directory for server files
 data_dir: "/data"

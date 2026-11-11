@@ -320,7 +320,7 @@ func DownloadModJar(rawURL, dir string) (string, error) {
 	}
 	client := &http.Client{Timeout: 5 * time.Minute}
 	req, _ := http.NewRequest("GET", rawURL, nil)
-	req.Header.Set("User-Agent", "RedstoneCore-Agent/1.0 (https://redstonecore.net)")
+	req.Header.Set("User-Agent", "HostMode-Agent/1.0 (+https://hostmode.net)")
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

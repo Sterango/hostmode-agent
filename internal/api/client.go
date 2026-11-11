@@ -317,7 +317,7 @@ func (c *Client) DownloadPlugin(pluginUUID, destPath string) error {
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.apiToken)
-	req.Header.Set("User-Agent", "RedstoneCore-Agent/1.0")
+	req.Header.Set("User-Agent", "HostMode-Agent/1.0 (+https://hostmode.net)")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -366,7 +366,7 @@ func (c *Client) post(path string, body interface{}, auth bool) ([]byte, error) 
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "RedstoneCore-Agent/1.0")
+	req.Header.Set("User-Agent", "HostMode-Agent/1.0 (+https://hostmode.net)")
 
 	if auth && c.apiToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiToken)

@@ -1,4 +1,4 @@
-# RedstoneCore Agent
+# HostMode Agent (formerly RedstoneCore)
 
 ## Versioning Scheme
 
@@ -14,7 +14,7 @@ To release a new version:
 
 1. Update the version in `Dockerfile` (line ~20):
    ```dockerfile
-   -ldflags="-w -s -X github.com/sterango/redstonecore-agent/internal/version.Version=X.Y.Z -X github.com/sterango/redstonecore-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+   -ldflags="-w -s -X github.com/sterango/hostmode-agent/internal/version.Version=X.Y.Z -X github.com/sterango/hostmode-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
    ```
 
 2. Update `AGENT_LATEST_VERSION` in the web app `.env` (`/mnt/Drive1/palahace/websites/redstonecore.net/.env`):
@@ -24,14 +24,30 @@ To release a new version:
 
 3. Commit and push both repos - GitHub Action will build and push to GHCR
 
-4. Users can update via UI "Update Now" button or `./rsc update`
+4. Users can update via UI "Update Now" button or `./hostmode update` (`./rsc update` on pre-rename installs)
 
 ## How Self-Update Works
 
 The agent self-update process:
 1. Web panel sends `update_agent` command via WebSocket
-2. Agent pulls latest image: `docker pull ghcr.io/sterango/redstonecore-agent:latest`
-3. Agent restarts itself: `docker compose -p redstonecore -f /docker-compose.yml up -d --force-recreate`
+2. Agent finds its own container (`hostmode`, or `redstonecore` on pre-rename installs) and pulls the image it was started from
+3. Agent restarts itself with that container's compose project: `docker compose -p <project> up -d --force-recreate`
+
+## Rename compatibility (do not break)
+
+CI publishes every build to BOTH `ghcr.io/sterango/hostmode-agent` and `ghcr.io/sterango/redstonecore-agent`.
+Installs made before the HostMode rename have `redstonecore-agent:latest`, container `redstonecore`,
+project `redstonecore` and `RSC_*` env vars baked into their compose file. Keep publishing the old image
+name, keep the `RSC_*` env fallback in `config.getenv`, and keep `redstonecore` in `agentContainerNames`.
+
+## Legacy install migration (`internal/agent/migrate.go`)
+
+3 minutes after a 2.x agent starts inside a `redstonecore` container, it moves the install to the HostMode
+names once: a `docker:cli` helper backs up `docker-compose.yml` → `.pre-hostmode` (and `.env`), rewrites
+image/service/container/`RSC_*` names, adds `name: hostmode` (so plain `docker compose` and `./rsc` in the old
+folder still work), swaps the container and checks it's running. Any failure restores the backups and the
+old container. The folder keeps its name. `/config/.hostmode-migration` marks the attempt so it never
+loops. Opt out with `HOSTMODE_SKIP_MIGRATION=1`. It needs the `hostmode-agent` GHCR package to be public.
 
 Requirements for self-update:
 - Container must run as `user: root` (for Docker socket access)

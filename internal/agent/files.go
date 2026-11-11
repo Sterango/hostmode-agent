@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sterango/redstonecore-agent/internal/api"
-	"github.com/sterango/redstonecore-agent/internal/minecraft"
+	"github.com/sterango/hostmode-agent/internal/api"
+	"github.com/sterango/hostmode-agent/internal/minecraft"
 )
 
 // FileItem represents a file or directory in the file manager

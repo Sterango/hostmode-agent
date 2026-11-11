@@ -1,18 +1,18 @@
-# RedstoneCore Agent - Production Docker Compose
-# Download: curl -O https://redstonecore.net/downloads/docker-compose.yml
+# HostMode Agent - Production Docker Compose
+# Download: curl -O https://hostmode.net/downloads/docker-compose.yml
 # Usage: docker-compose up -d
 
 services:
-  redstonecore:
-    image: ghcr.io/sterango/redstonecore-agent:latest
-    container_name: redstonecore
+  hostmode:
+    image: ghcr.io/sterango/hostmode-agent:latest
+    container_name: hostmode
     restart: unless-stopped
     network_mode: host
     user: root
 
     environment:
-      # Required: Your license key from redstonecore.net
-      - RSC_LICENSE_KEY=${RSC_LICENSE_KEY}
+      # Required: Your license key from hostmode.net
+      - HOSTMODE_LICENSE_KEY=${HOSTMODE_LICENSE_KEY}
 
       # Optional: Timezone (default: UTC)
       - TZ=${TZ:-UTC}
@@ -20,7 +20,7 @@ services:
       # Host path of ./data — sibling game containers (e.g. Satisfactory) bind-mount
       # against HOST paths, not the agent's in-container /data. The agent also tries
       # to auto-detect this, but setting it explicitly is the most reliable.
-      - RSC_HOST_DATA_DIR=${PWD}/data
+      - HOSTMODE_HOST_DATA_DIR=${PWD}/data
 
     volumes:
       # Server data (world files, plugins, mods, etc.)

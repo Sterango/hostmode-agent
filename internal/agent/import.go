@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sterango/redstonecore-agent/internal/api"
-	"github.com/sterango/redstonecore-agent/internal/minecraft"
+	"github.com/sterango/hostmode-agent/internal/api"
+	"github.com/sterango/hostmode-agent/internal/minecraft"
 )
 
 // Importing an existing server happens in two commands, because the user gets
@@ -167,7 +167,7 @@ func (a *Agent) downloadImportOnce(importID, url, token, destPath string, offset
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", "RedstoneCore-Agent/1.0")
+	req.Header.Set("User-Agent", "HostMode-Agent/1.0 (+https://hostmode.net)")
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
