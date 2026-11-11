@@ -45,6 +45,13 @@ func (d *Downloader) DownloadServer(serverType ServerType, version string, destD
 		return d.downloadWaterfall(version, destDir)
 	case TypeSpigot:
 		return d.downloadSpigot(version, destDir)
+	case TypeBedrock:
+		// The Bedrock image downloads the requested BDS build itself on start;
+		// pre-pull the image so the first start isn't slow.
+		if out, err := exec.Command("docker", "pull", BedrockImage).CombinedOutput(); err != nil {
+			return "", fmt.Errorf("docker pull %s: %v: %s", BedrockImage, err, strings.TrimSpace(string(out)))
+		}
+		return "", nil
 	default:
 		return "", fmt.Errorf("automatic download not supported for server type: %s", serverType)
 	}

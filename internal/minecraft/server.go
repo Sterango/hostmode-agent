@@ -26,6 +26,7 @@ const (
 	TypeFabric     ServerType = "fabric"
 	TypeBungeeCord ServerType = "bungeecord"
 	TypeVelocity   ServerType = "velocity"
+	TypeBedrock    ServerType = "bedrock" // Bedrock Dedicated Server, see bedrock.go
 	TypeOther      ServerType = "other"
 )
 
@@ -148,6 +149,17 @@ func (s *Server) Start() error {
 	s.PlayerCount = 0
 	s.playersMutex.Unlock()
 
+	if s.IsBedrock() {
+		_ = s.ensureBedrockProperties()
+		cmd, err := s.bedrockCommand()
+		if err != nil {
+			s.Status = StatusStopped
+			return err
+		}
+		s.cmd = cmd
+		return s.launch()
+	}
+
 	// Find the JAR file or run script
 	jarPath, err := s.findJarFile()
 	if err != nil {
@@ -204,7 +216,11 @@ func (s *Server) Start() error {
 		}
 		s.cmd = exec.Command(javaBin, javaArgs...)
 	}
+	return s.launch()
+}
 
+// launch wires up s.cmd's pipes, starts it and begins monitoring.
+func (s *Server) launch() error {
 	s.cmd.Dir = s.DataDir
 
 	// Run the server in its own process group so we can later signal the whole
@@ -262,7 +278,7 @@ func (s *Server) Start() error {
 // as ready. Proxies and custom servers don't, so they count as running once launched.
 func (s *Server) logsReadyLine() bool {
 	switch s.Type {
-	case TypeVanilla, TypePaper, TypeSpigot, TypeForge, TypeNeoForge, TypeFabric:
+	case TypeVanilla, TypePaper, TypeSpigot, TypeForge, TypeNeoForge, TypeFabric, TypeBedrock:
 		return true
 	}
 	return false
@@ -381,6 +397,9 @@ func (s *Server) Stop() error {
 
 func (s *Server) Kill() error {
 	s.stopRequested = true
+	if s.IsBedrock() {
+		s.removeBedrockContainer()
+	}
 	if s.cmd == nil || s.cmd.Process == nil {
 		s.Status = StatusStopped
 		return nil
@@ -497,6 +516,11 @@ var (
 )
 
 func (s *Server) parseConsoleLine(line string) {
+	if s.IsBedrock() {
+		s.parseBedrockConsoleLine(line)
+		return
+	}
+
 	// Parse TPS from console output
 	s.parseTPS(line)
 
@@ -665,6 +689,9 @@ func (s *Server) acceptEULA() error {
 }
 
 func (s *Server) EnsureServerProperties() error {
+	if s.IsBedrock() {
+		return s.ensureBedrockProperties()
+	}
 	propsPath := filepath.Join(s.DataDir, "server.properties")
 
 	// Check if server.properties exists

@@ -62,6 +62,9 @@ func (s *Server) Spec() GameSpec { return s.spec }
 // writeConfig pins the LinuxGSM port/name/maxplayers config so instances don't
 // collide (host networking means there's no docker port remap).
 func (s *Server) writeConfig() error {
+	if !s.spec.IsLinuxGSM() {
+		return s.prepareContainerDirs() // configured via env at `docker run`
+	}
 	dir := filepath.Join(s.DataDir, "lgsm", "config-lgsm", s.spec.Name)
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		return err
@@ -85,7 +88,9 @@ func (s *Server) Install(progress func(stage, message string)) error {
 	if err := os.MkdirAll(s.DataDir, 0o777); err != nil {
 		return err
 	}
-	_ = os.Chown(s.DataDir, 1000, 1000) // LinuxGSM runs as uid 1000
+	if s.spec.IsLinuxGSM() {
+		_ = os.Chown(s.DataDir, 1000, 1000) // LinuxGSM runs as uid 1000
+	}
 	if err := s.writeConfig(); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
@@ -105,6 +110,9 @@ func (s *Server) Install(progress func(stage, message string)) error {
 }
 
 func (s *Server) runArgs() []string {
+	if !s.spec.IsLinuxGSM() {
+		return s.containerRunArgs()
+	}
 	args := []string{
 		"run", "-d",
 		"--name", s.container(),
@@ -126,8 +134,37 @@ func (s *Server) dockerAction(action string) error {
 	return nil
 }
 
-func (s *Server) Start() error   { return s.dockerAction("start") }
-func (s *Server) Stop() error    { return s.dockerAction("stop") }
+func (s *Server) Start() error { return s.dockerAction("start") }
+
+// Stop saves the world first when the game has a save command over RCON
+// (best-effort: a failed save still stops), then stops the container.
+func (s *Server) Stop() error {
+	if c := s.spec.Container; c != nil && c.SaveCommand != "" {
+		_, _ = s.rcon(c.SaveCommand)
+	}
+	return s.dockerAction("stop")
+}
+
+// Update fetches the latest game build: LinuxGSM's update for LinuxGSM games;
+// for container games, pull the image and recreate (they update on boot).
+func (s *Server) Update() (string, error) {
+	if s.spec.IsLinuxGSM() {
+		return s.RunLGSM("update")
+	}
+	if out, err := exec.Command("docker", "pull", s.spec.Image()).CombinedOutput(); err != nil {
+		return strings.TrimSpace(string(out)), err
+	}
+	_ = s.Stop()
+	return "", s.Recreate()
+}
+
+// Save runs the game's save command over RCON, if it has one.
+func (s *Server) Save() (string, error) {
+	if c := s.spec.Container; c != nil && c.SaveCommand != "" {
+		return s.rcon(c.SaveCommand)
+	}
+	return "", fmt.Errorf("save is not supported for %s", s.spec.Label)
+}
 func (s *Server) Restart() error { return s.dockerAction("restart") }
 func (s *Server) Kill() error    { return s.dockerAction("kill") }
 
@@ -135,6 +172,9 @@ func (s *Server) Kill() error    { return s.dockerAction("kill") }
 // the LinuxGSM user. Returns the combined output. The gameserver script lives at
 // /data/<name> in the LinuxGSM image.
 func (s *Server) RunLGSM(args ...string) (string, error) {
+	if !s.spec.IsLinuxGSM() {
+		return "", fmt.Errorf("%s does not run on LinuxGSM", s.spec.Label)
+	}
 	full := append([]string{"exec", "-u", "1000", "-w", "/data", s.container(), "./" + s.spec.Name}, args...)
 	out, err := exec.Command("docker", full...).CombinedOutput()
 	return strings.TrimSpace(string(out)), err
@@ -187,8 +227,19 @@ func (s *Server) Status() string {
 	return "stopped"
 }
 
-// Poll refreshes the player count via A2S (games without A2S report 0).
+// Poll refreshes the player count via A2S, or via RCON for container games
+// that only have RCON (games with neither report 0).
 func (s *Server) Poll() {
+	if c := s.spec.Container; c != nil && c.PlayersCommand != "" && c.CountPlayers != nil {
+		n := 0
+		if out, err := s.rcon(c.PlayersCommand); err == nil {
+			n = c.CountPlayers(out)
+		}
+		s.mu.Lock()
+		s.players = n
+		s.mu.Unlock()
+		return
+	}
 	if s.spec.QueryOffset < 0 {
 		return
 	}

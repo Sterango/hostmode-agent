@@ -10,7 +10,12 @@
 // don't collide.
 package gameserver
 
-import "fmt"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"strings"
+)
 
 // Port is a published port relative to a server's allocated base.
 type Port struct {
@@ -32,10 +37,22 @@ type GameSpec struct {
 	// Config returns the LinuxGSM <name>.cfg contents that pin this server's
 	// port(s)/name/player cap. base is the allocated base port.
 	Config func(base, maxPlayers int, serverName string) string
+
+	// Container, when set, runs the game from its own image instead of
+	// LinuxGSM (Tag/Name/Config are then unused). See container.go.
+	Container *ContainerSpec
 }
 
 // Image is the Docker image for this game.
-func (s GameSpec) Image() string { return "gameservermanagers/gameserver:" + s.Tag }
+func (s GameSpec) Image() string {
+	if s.Container != nil {
+		return s.Container.Image
+	}
+	return "gameservermanagers/gameserver:" + s.Tag
+}
+
+// IsLinuxGSM reports whether the game runs from a LinuxGSM image.
+func (s GameSpec) IsLinuxGSM() bool { return s.Container == nil }
 
 // kv builds a LinuxGSM config file body from key=value lines.
 func kv(pairs ...string) string {
@@ -122,6 +139,96 @@ var Specs = map[string]GameSpec{
 			return kv("servername", name, "port", fmt.Sprintf("%d", base), "maxplayers", fmt.Sprintf("%d", mp))
 		},
 	},
+	// Hytale: single QUIC/UDP port. Name, password and player cap live in
+	// Server/config.json (created on first start), not the LinuxGSM config.
+	// Install and first start each need a one-time Hytale account device login;
+	// the agent surfaces that URL to the panel (see HytaleAuthFromLog).
+	"hytale": {
+		Key: "hytale", Label: "Hytale", Tag: "hyt", Name: "hytserver",
+		Ports: []Port{{0, "udp"}}, QueryOffset: -1, PortCount: 2,
+		Config: func(base, mp int, name string) string {
+			return kv("port", fmt.Sprintf("%d", base))
+		},
+	},
+	// ARK: Survival Evolved: game, raw (game+1, implicit), Steam query, RCON.
+	"arkse": {
+		Key: "arkse", Label: "ARK: Survival Evolved", Tag: "ark", Name: "arkserver",
+		Ports: []Port{{0, "udp"}, {1, "udp"}, {2, "udp"}, {3, "tcp"}}, QueryOffset: 2, PortCount: 6,
+		Config: func(base, mp int, name string) string {
+			return kv("port", fmt.Sprintf("%d", base),
+				"queryport", fmt.Sprintf("%d", base+2),
+				"rconport", fmt.Sprintf("%d", base+3),
+				"maxplayers", fmt.Sprintf("%d", mp),
+				"servername", argSafe(name),
+				// LinuxGSM default plus session name, player cap and RCON. Sourced
+				// by bash after _default.cfg, so ${...} refer to the vars above.
+				"startparameters", "${defaultmap}?AltSaveDirectoryName=${altsavedirectoryname}"+
+					"?SessionName=${servername}?MaxPlayers=${maxplayers}?RCONEnabled=True?RCONPort=${rconport}"+
+					" -MultiHome=${ip} -Port=${port} -QueryPort=${queryport} -AutoManagedMods -Crossplay -PublicIPForEpic=${publicip}")
+		},
+	},
+	// Garry's Mod (Source): game port also answers A2S; client + SourceTV ports.
+	// The hostname comes from the server cfg LinuxGSM generates.
+	"garrysmod": {
+		Key: "garrysmod", Label: "Garry's Mod", Tag: "gmod", Name: "gmodserver",
+		Ports: []Port{{0, "udp/tcp"}, {1, "udp"}, {2, "udp"}}, QueryOffset: 0, PortCount: 4,
+		Config: func(base, mp int, name string) string {
+			return kv("servername", name,
+				"port", fmt.Sprintf("%d", base),
+				"clientport", fmt.Sprintf("%d", base+1),
+				"sourcetvport", fmt.Sprintf("%d", base+2),
+				"maxplayers", fmt.Sprintf("%d", mp))
+		},
+	},
+	// Factorio: UDP game port + TCP RCON. Name/player cap live in the
+	// server-settings JSON LinuxGSM generates.
+	"factorio": {
+		Key: "factorio", Label: "Factorio", Tag: "fctr", Name: "fctrserver",
+		Ports: []Port{{0, "udp"}, {1, "tcp"}}, QueryOffset: -1, PortCount: 2,
+		Config: func(base, mp int, name string) string {
+			return kv("port", fmt.Sprintf("%d", base),
+				"rconport", fmt.Sprintf("%d", base+1),
+				"rconpassword", randomToken())
+		},
+	},
+	// Unturned: game port + Steam query on game+1.
+	"unturned": {
+		Key: "unturned", Label: "Unturned", Tag: "unt", Name: "untserver",
+		Ports: []Port{{0, "udp"}, {1, "udp"}}, QueryOffset: 1, PortCount: 4,
+		Config: func(base, mp int, name string) string {
+			return kv("servername", argSafe(name),
+				"port", fmt.Sprintf("%d", base),
+				"maxplayers", fmt.Sprintf("%d", mp))
+		},
+	},
+}
+
+// argSafe makes a server name safe to splice into a LinuxGSM startparameters
+// line, which is word-split by the shell: spaces become underscores and
+// anything outside a conservative set is dropped.
+func argSafe(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r == ' ':
+			b.WriteRune('_')
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-', r == '.':
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return "HostMode"
+	}
+	return b.String()
+}
+
+// randomToken returns a random hex string for generated passwords.
+func randomToken() string {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "hostmode"
+	}
+	return hex.EncodeToString(buf)
 }
 
 // Spec returns the spec for a game key.

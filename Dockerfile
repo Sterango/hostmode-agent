@@ -17,7 +17,7 @@ RUN go mod tidy
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-w -s -X github.com/sterango/hostmode-agent/internal/version.Version=2.0.1 -X github.com/sterango/hostmode-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -ldflags="-w -s -X github.com/sterango/hostmode-agent/internal/version.Version=2.0.2 -X github.com/sterango/hostmode-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o /hostmode \
     ./cmd/hostmode
 

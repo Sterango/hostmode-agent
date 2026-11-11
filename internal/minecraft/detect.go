@@ -182,6 +182,13 @@ func (d *Detection) readProperties(root string) {
 // matters: proxies and modern loaders are checked before the generic jar scan,
 // because a Forge install also ships a plain-looking server jar.
 func (d *Detection) detectTypeAndVersion(root string) {
+	// --- Bedrock Dedicated Server: a native binary, no jars ---
+	if fileExists(root, "bedrock_server") || fileExists(root, "bedrock_server.exe") {
+		d.Type = string(TypeBedrock)
+		d.MinecraftVersion = "latest"
+		return
+	}
+
 	// --- Proxies, which have no world and their own config files ---
 	if fileExists(root, "velocity.toml") {
 		d.Type = string(TypeVelocity)

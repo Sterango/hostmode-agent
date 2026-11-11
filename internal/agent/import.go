@@ -427,6 +427,12 @@ func (a *Agent) handleImportFinalize(cmd api.Command) error {
 	a.servers[serverUUID] = server
 	a.serversMu.Unlock()
 
+	if server.IsBedrock() {
+		if err := minecraft.WriteBedrockMarker(serverDir, version, int(ram)); err != nil {
+			log.Printf("[Import %s] warning: could not write Bedrock marker: %v", importID, err)
+		}
+	}
+
 	// Reconcile server.properties with the port/slots the user confirmed, while
 	// leaving the rest of the imported file untouched.
 	if err := server.EnsureServerProperties(); err != nil {

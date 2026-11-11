@@ -52,6 +52,7 @@ type Agent struct {
 func New(cfg *config.Config) *Agent {
 	client := api.NewClient(cfg.CloudURL, cfg.APIToken)
 	minecraft.JavaRuntimeDir = filepath.Join(cfg.DataDir, "java")
+	minecraft.AgentDataRoot = cfg.DataDir
 
 	return &Agent{
 		config:         cfg,
@@ -93,6 +94,7 @@ func (a *Agent) Run() error {
 	// Resolve the host path of /data (needed to mount sibling game containers)
 	// and re-attach any existing Satisfactory servers.
 	a.hostDataDir = a.resolveHostDataDir()
+	minecraft.HostDataRoot = a.hostDataDir // Bedrock runs in a sibling container
 	if err := a.discoverSatisfactoryServers(); err != nil {
 		log.Printf("Warning: Failed to discover Satisfactory servers: %v", err)
 	}
@@ -429,6 +431,17 @@ func (a *Agent) discoverServers() error {
 			}
 			if p, ok := props["max-players"]; ok {
 				fmt.Sscanf(p, "%d", &maxPlayers)
+			}
+		}
+
+		// Bedrock servers have no JAR or -Xmx to detect; their marker is authoritative.
+		if v, ram, ok := minecraft.ReadBedrockMarker(serverDir); ok {
+			serverType, minecraftVersion = minecraft.TypeBedrock, v
+			if ram > 0 {
+				allocatedRAM = ram
+			}
+			if port == 25565 {
+				port = 19132
 			}
 		}
 
@@ -992,6 +1005,12 @@ func (a *Agent) createServer(cmd api.Command) error {
 	a.servers[cmd.ServerUUID] = server
 	a.serversMu.Unlock()
 
+	if server.IsBedrock() {
+		if err := minecraft.WriteBedrockMarker(serverDir, version, int(ram)); err != nil {
+			return fmt.Errorf("failed to write Bedrock marker: %w", err)
+		}
+	}
+
 	// Ensure server.properties is set up
 	a.reportInstall(cmd.ServerUUID, "preparing", "Preparing server files", installStagePct("preparing"))
 	if err := server.EnsureServerProperties(); err != nil {
@@ -1287,22 +1306,65 @@ func (a *Agent) streamSatisfactoryLogs(uuid string) {
 		defer a.satServersMu.RUnlock()
 		_, ok := a.satServers[uuid]
 		return ok
-	})
+	}, nil)
 }
 
 // streamGameLogs tails a LinuxGSM game server's container logs into the console.
 func (a *Agent) streamGameLogs(uuid string) {
+	var onLine func(string)
+	a.gameServersMu.RLock()
+	if gs, ok := a.gameServers[uuid]; ok && gs.Game == "hytale" {
+		onLine = a.hytaleAuthWatcher(uuid)
+	}
+	a.gameServersMu.RUnlock()
 	a.streamContainerLogs(uuid, gameserver.ContainerName(uuid), func() bool {
 		a.gameServersMu.RLock()
 		defer a.gameServersMu.RUnlock()
 		_, ok := a.gameServers[uuid]
 		return ok
-	})
+	}, onLine)
+}
+
+// hytaleAuthWatcher returns a log-line hook that pushes Hytale's device-login
+// URL/code to the panel (hytale_auth_url / hytale_auth_code) and clears them
+// once the login completes.
+func (a *Agent) hytaleAuthWatcher(uuid string) func(string) {
+	var url, code string
+	push := func() {
+		props := map[string]string{"hytale_auth_url": url, "hytale_auth_code": code}
+		if err := a.client.SyncProperties(&api.PropertiesRequest{ServerUUID: uuid, Properties: props}); err != nil {
+			log.Printf("[Hytale] failed to push login prompt for %s: %v", uuid, err)
+		}
+	}
+	return func(line string) {
+		ev, ok := gameserver.HytaleAuthFromLog(line)
+		if !ok {
+			return
+		}
+		if ev.Done {
+			if url != "" || code != "" {
+				url, code = "", ""
+				push()
+			}
+			return
+		}
+		changed := false
+		if ev.URL != "" && ev.URL != url {
+			url, changed = ev.URL, true
+		}
+		if ev.Code != "" && ev.Code != code {
+			code, changed = ev.Code, true
+		}
+		if changed {
+			push()
+		}
+	}
 }
 
 // streamContainerLogs tails a container's logs into the console buffer, re-attaching
-// across restarts, until stillTracked reports the server is gone.
-func (a *Agent) streamContainerLogs(uuid, container string, stillTracked func() bool) {
+// across restarts, until stillTracked reports the server is gone. onLine, when
+// non-nil, sees every line too.
+func (a *Agent) streamContainerLogs(uuid, container string, stillTracked func() bool, onLine func(string)) {
 	buf := a.createConsoleBuffer(uuid)
 	for {
 		if !stillTracked() {
@@ -1325,6 +1387,9 @@ func (a *Agent) streamContainerLogs(uuid, container string, stillTracked func() 
 			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 			for scanner.Scan() {
 				buf.AddLine(scanner.Text())
+				if onLine != nil {
+					onLine(scanner.Text())
+				}
 			}
 			close(done)
 		}()
@@ -2890,6 +2955,16 @@ func (a *Agent) changeServerType(cmd api.Command, server *minecraft.Server) erro
 	// Ensure server is stopped
 	if server.IsActive() {
 		return fmt.Errorf("server must be stopped before changing type")
+	}
+
+	// Java and Bedrock worlds aren't compatible; only Bedrock→Bedrock (a version
+	// change) is allowed across that line.
+	if (server.Type == minecraft.TypeBedrock) != (minecraft.ServerType(newType) == minecraft.TypeBedrock) {
+		return fmt.Errorf("cannot switch between Java and Bedrock editions")
+	}
+	if server.Type == minecraft.TypeBedrock {
+		server.MinecraftVersion = version
+		return minecraft.WriteBedrockMarker(server.DataDir, version, server.AllocatedRAM)
 	}
 
 	log.Printf("Changing server %s type from %s to %s (version %s)", server.Name, server.Type, newType, version)

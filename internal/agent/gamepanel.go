@@ -69,6 +69,12 @@ var configGlobs = map[string][]string{
 	"corekeeper":         {"serverfiles/*.ini"},
 	"dontstarvetogether": {"serverfiles/*/cluster.ini", "serverfiles/*/*/server.ini"},
 	"terraria":           {"serverfiles/serverconfig.txt"},
+	"hytale":             {"serverfiles/Server/config.json", "serverfiles/Server/permissions.json", "serverfiles/Server/whitelist.json"},
+	"arkse":              {"serverfiles/ShooterGame/Saved/Config/LinuxServer/*.ini"},
+	"garrysmod":          {"serverfiles/garrysmod/cfg/gmodserver.cfg", "serverfiles/garrysmod/cfg/server.cfg"},
+	"factorio":           {"serverfiles/data/fctrserver.json", "serverfiles/data/server-adminlist.json"},
+	"arksa":              {"arkserver/ShooterGame/Saved/Config/WindowsServer/*.ini"},
+	"unturned":           {"serverfiles/Servers/*/Config.json", "serverfiles/Servers/*/Server/Commands.dat"},
 }
 
 // updateGameConfig applies schema-driven settings. name/max-players pin into the
@@ -114,9 +120,18 @@ func (a *Agent) gameAction(cmd api.Command, gs *gameserver.Server) error {
 	action, _ := cmd.Payload["action"].(string)
 	switch action {
 	case "force_update":
-		out, err := gs.RunLGSM("update")
+		out, err := gs.Update()
 		if err != nil {
 			return fmt.Errorf("update: %v: %s", err, out)
+		}
+		return nil
+	case "save":
+		if gs.Spec().Container == nil {
+			log.Printf("[GamePanel] %s: save not yet implemented for LinuxGSM games (TODO)", gs.Game)
+			return nil
+		}
+		if out, err := gs.Save(); err != nil {
+			return fmt.Errorf("save: %v: %s", err, out)
 		}
 		return nil
 	default:
@@ -192,7 +207,13 @@ func (a *Agent) pushGameState(uuid string, gs *gameserver.Server) {
 	}
 
 	spec := gs.Spec()
-	if spec.QueryOffset >= 0 {
+	if spec.Container != nil && spec.Container.RCONOffset >= 0 {
+		// Generated admin/RCON password, shown (owner-only) in the panel.
+		props[g+"_admin_password"] = gs.Secret("admin_password")
+	}
+	if spec.Container != nil && spec.Container.PlayersCommand != "" {
+		props[g+"_players_online"] = fmt.Sprintf("%d", gs.PlayerCount())
+	} else if spec.QueryOffset >= 0 {
 		if info, err := gameserver.QueryA2S(fmt.Sprintf("127.0.0.1:%d", gs.BasePort+spec.QueryOffset)); err == nil {
 			props[g+"_players_online"] = fmt.Sprintf("%d", info.Players)
 			if info.Map != "" {
