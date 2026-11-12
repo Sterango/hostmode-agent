@@ -17,7 +17,7 @@ To release a new version:
    -ldflags="-w -s -X github.com/sterango/hostmode-agent/internal/version.Version=X.Y.Z -X github.com/sterango/hostmode-agent/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
    ```
 
-2. Update `AGENT_LATEST_VERSION` in the web app `.env` (`/mnt/Drive1/palahace/websites/redstonecore.net/.env`):
+2. Update `AGENT_LATEST_VERSION` in the web app `.env` (`/mnt/Drive1/palahace/websites/hostmode.net/.env`):
    ```
    AGENT_LATEST_VERSION=X.Y.Z
    ```
