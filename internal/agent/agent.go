@@ -273,6 +273,28 @@ func sanitizeServerDirName(name string) string {
 	return slug
 }
 
+// uniqueServerDir returns the directory for a new server. Two servers whose names
+// slug the same ("bedrock ;)" twice) must not share a folder: deleting one would
+// RemoveAll the other's files. A dir that already belongs to this UUID (a retried
+// create) is reused; otherwise -2, -3, ... is appended until a free one is found.
+func uniqueServerDir(serversRoot, name, uuid string) string {
+	base := sanitizeServerDirName(name)
+	for i := 1; ; i++ {
+		slug := base
+		if i > 1 {
+			slug = fmt.Sprintf("%s-%d", base, i)
+		}
+		dir := filepath.Join(serversRoot, slug)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return dir
+		}
+		if owner, err := os.ReadFile(filepath.Join(dir, ".uuid")); err == nil &&
+			uuid != "" && strings.TrimSpace(string(owner)) == uuid {
+			return dir
+		}
+	}
+}
+
 func (a *Agent) initServers() error {
 	for i, serverCfg := range a.config.Servers {
 		serverDir := filepath.Join(a.config.DataDir, "servers", sanitizeServerDirName(serverCfg.Name))
@@ -975,7 +997,7 @@ func (a *Agent) createServer(cmd api.Command) error {
 	log.Printf("Creating server: %s (type: %s, version: %s, loader: %s)", name, serverType, version, loaderVersion)
 
 	// Create server directory
-	serverDir := filepath.Join(a.config.DataDir, "servers", sanitizeServerDirName(name))
+	serverDir := uniqueServerDir(filepath.Join(a.config.DataDir, "servers"), name, cmd.ServerUUID)
 	if err := os.MkdirAll(serverDir, 0775); err != nil {
 		return fmt.Errorf("failed to create server directory: %w", err)
 	}
@@ -1108,7 +1130,7 @@ func (a *Agent) createSatisfactoryServer(cmd api.Command) error {
 		a.hostDataDir = a.resolveHostDataDir()
 	}
 
-	serverDir := filepath.Join(a.config.DataDir, "servers", sanitizeServerDirName(name))
+	serverDir := uniqueServerDir(filepath.Join(a.config.DataDir, "servers"), name, cmd.ServerUUID)
 	if err := os.MkdirAll(filepath.Join(serverDir, "config"), 0775); err != nil {
 		return fmt.Errorf("failed to create server directory: %w", err)
 	}
@@ -1616,7 +1638,7 @@ func (a *Agent) createGameServer(cmd api.Command, game string) error {
 		a.hostDataDir = a.resolveHostDataDir()
 	}
 
-	serverDir := filepath.Join(a.config.DataDir, "servers", sanitizeServerDirName(name))
+	serverDir := uniqueServerDir(filepath.Join(a.config.DataDir, "servers"), name, cmd.ServerUUID)
 	dataDir := filepath.Join(serverDir, "data")
 	if err := os.MkdirAll(dataDir, 0o777); err != nil {
 		return fmt.Errorf("failed to create server directory: %w", err)
@@ -1849,6 +1871,16 @@ func (a *Agent) deleteServer(cmd api.Command) error {
 		serverDir = filepath.Join(a.config.DataDir, "servers", sanitizeServerDirName(serverName))
 	}
 	if serverDir != "" {
+		// Never RemoveAll a folder another server has since claimed (pre-uniqueServerDir
+		// installs can have two same-named servers sharing one dir).
+		if owner, err := os.ReadFile(filepath.Join(serverDir, ".uuid")); err == nil &&
+			strings.TrimSpace(string(owner)) != serverUUID {
+			log.Printf("Not deleting %s: it belongs to server %s, not %s",
+				serverDir, strings.TrimSpace(string(owner)), serverUUID)
+			serverDir = ""
+		}
+	}
+	if serverDir != "" {
 		if _, err := os.Stat(serverDir); err == nil {
 			// Write .deleted marker first (in case removal is interrupted)
 			markerPath := filepath.Join(serverDir, ".deleted")
@@ -2057,7 +2089,7 @@ func (a *Agent) createModpackServer(cmd api.Command) error {
 	log.Printf("Creating modpack server: %s (modpack: %s, loader: %s, using server pack: %v)", name, modpackName, loader, useServerPack)
 
 	// Create server directory
-	serverDir := filepath.Join(a.config.DataDir, "servers", sanitizeServerDirName(name))
+	serverDir := uniqueServerDir(filepath.Join(a.config.DataDir, "servers"), name, cmd.ServerUUID)
 	if err := os.MkdirAll(serverDir, 0775); err != nil {
 		return fmt.Errorf("failed to create server directory: %w", err)
 	}
